@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import jsPDF from 'jspdf';
 
 const API_KEY = 'AIzaSyC68YQ0wXs2dZnuip2Y_YVh1uLLL1L2OGM';
 const genAI = new GoogleGenerativeAI(API_KEY);
@@ -15,6 +16,11 @@ export default function Workspace() {
     const [isLoading, setIsLoading] = useState(false);
     const [chatSession, setChatSession] = useState(null);
     const chatBottomRef = useRef(null);
+
+    // Refs for PDF Export
+    const keywordsRef = useRef(null);
+    const funcReqRef = useRef(null);
+    const nonFuncReqRef = useRef(null);
 
     useEffect(() => {
         // Busca o job do localStorage que a tela anterior salvou
@@ -65,13 +71,55 @@ export default function Workspace() {
         try {
             setIsLoading(true);
             const result = await chatSession.sendMessage(userMsg);
-            setMessages(prev => [...prev, { role: 'assistant', content: result.response.text(), id: Date.now() }]);
+
+            // Simula delay de digitação do 'humanizado'
+            setTimeout(() => {
+                setMessages(prev => [...prev, { role: 'assistant', content: result.response.text(), id: Date.now() }]);
+                setIsLoading(false);
+            }, 1000 + Math.random() * 800);
+
         } catch (error) {
             console.error("Error sending message:", error);
             setMessages(prev => [...prev, { role: 'assistant', content: "Tivemos um problema de comunicação. Pode repetir?", id: Date.now() }]);
-        } finally {
             setIsLoading(false);
         }
+    };
+
+    const generatePDF = () => {
+        const doc = new jsPDF();
+
+        doc.setFontSize(18);
+        doc.setFont("helvetica", "bold");
+        doc.text("Documento de Elicitação de Requisitos", 20, 20);
+
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Projeto: ${job.title}`, 20, 30);
+        doc.text(`Cliente: ${job.clientName}`, 20, 38);
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Palavras-chave:", 20, 55);
+        doc.setFont("helvetica", "normal");
+        const keywords = doc.splitTextToSize(keywordsRef.current.value || 'Não preenchido', 170);
+        doc.text(keywords, 20, 62);
+
+        let startY = 62 + (keywords.length * 5) + 10;
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Requisitos Funcionais:", 20, startY);
+        doc.setFont("helvetica", "normal");
+        const funcText = doc.splitTextToSize(funcReqRef.current.value || 'Não preenchido', 170);
+        doc.text(funcText, 20, startY + 7);
+
+        startY += 7 + (funcText.length * 5) + 10;
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Requisitos Não Funcionais:", 20, startY);
+        doc.setFont("helvetica", "normal");
+        const nonFuncText = doc.splitTextToSize(nonFuncReqRef.current.value || 'Não preenchido', 170);
+        doc.text(nonFuncText, 20, startY + 7);
+
+        doc.save(`${job.title.replace(/\s+/g, '_')}_Requisitos.pdf`);
     };
 
     const handleKeyDown = (e) => {
@@ -115,10 +163,15 @@ export default function Workspace() {
                         {messages.map((msg) => (
                             <div key={msg.id} className={`flex max-w-[85%] ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
                                 <div className={`p-4 rounded-2xl shadow-sm ${msg.role === 'user'
-                                        ? 'bg-primary text-primary-foreground rounded-br-sm'
-                                        : 'bg-card/80 backdrop-blur-sm border border-border text-foreground rounded-bl-sm'
+                                    ? 'bg-primary text-primary-foreground rounded-br-sm'
+                                    : 'bg-card/80 backdrop-blur-sm border border-border text-foreground rounded-bl-sm'
                                     }`}>
-                                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                                    <p
+                                        className="text-sm whitespace-pre-wrap leading-relaxed"
+                                        dangerouslySetInnerHTML={{
+                                            __html: msg.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+                                        }}
+                                    ></p>
                                 </div>
                             </div>
                         ))}
@@ -166,26 +219,32 @@ export default function Workspace() {
                     <div className="flex-1 p-5 overflow-y-auto flex flex-col gap-5">
                         <div className="flex flex-col w-full group">
                             <label className="text-xs font-medium text-muted-foreground mb-1 group-focus-within:text-foreground transition-colors">Palavras-chave</label>
-                            <input type="text" className="w-full bg-card/50 border border-border rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all shadow-inner" placeholder="E.g., Nuvem, Tempo Real..." />
+                            <input ref={keywordsRef} type="text" className="w-full bg-card/50 border border-border rounded-lg p-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary transition-all shadow-inner" placeholder="E.g., Nuvem, Tempo Real..." />
                         </div>
 
                         <div className="flex flex-col flex-1 group">
                             <label className="text-xs font-medium text-emerald-500/80 mb-1 group-focus-within:text-emerald-500 transition-colors">Requisitos Funcionais (RF)</label>
-                            <textarea className="w-full h-full min-h-[120px] bg-card/50 border border-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all shadow-inner" placeholder="- O sistema deve permitir que..."></textarea>
+                            <textarea ref={funcReqRef} className="w-full h-full min-h-[120px] bg-card/50 border border-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all shadow-inner" placeholder="- O sistema deve permitir que..."></textarea>
                         </div>
 
                         <div className="flex flex-col flex-1 group">
                             <label className="text-xs font-medium text-amber-500/80 mb-1 group-focus-within:text-amber-500 transition-colors">Requisitos Não Funcionais (RNF)</label>
-                            <textarea className="w-full h-full min-h-[120px] bg-card/50 border border-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500 transition-all shadow-inner" placeholder="- A API deve responder em 200ms..."></textarea>
+                            <textarea ref={nonFuncReqRef} className="w-full h-full min-h-[120px] bg-card/50 border border-border rounded-lg p-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500 transition-all shadow-inner" placeholder="- A API deve responder em 200ms..."></textarea>
                         </div>
                     </div>
 
-                    <div className="p-4 bg-card/30 border-t border-border/50 backdrop-blur-sm">
+                    <div className="p-4 bg-card/30 border-t border-border/50 backdrop-blur-sm grid grid-cols-2 gap-3">
+                        <button
+                            className="w-full py-3 bg-card border border-border text-foreground font-semibold rounded-xl hover:bg-muted transition-all text-sm tracking-wide shadow-sm"
+                            onClick={generatePDF}
+                        >
+                            EXPORTAR PDF
+                        </button>
                         <button
                             className="w-full py-3 bg-gradient-to-r from-primary to-blue-600 text-white font-semibold rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 transition-all text-sm tracking-wide"
                             onClick={() => navigate(`/simulation/${jobId}`)}
                         >
-                            INICIAR CICLO SDLC
+                            INICIAR SDLC
                         </button>
                     </div>
                 </div>

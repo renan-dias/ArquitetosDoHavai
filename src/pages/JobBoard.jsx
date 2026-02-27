@@ -15,12 +15,42 @@ export default function JobBoard() {
         generateJobs();
     }, []);
 
+    const FALLBACK_JOBS = [
+        {
+            id: 101,
+            title: "Plataforma Educacional Gamificada",
+            clientName: "Prof. Alberto (Escola Modelo)",
+            shortDescription: "Um portal de estudos com sistema de ranking e moedas virtuais para engajar os alunos nas tarefas escolares.",
+            personaPrompt: "Você é o Prof. Alberto, um professor animado do ensino fundamental. Responda de forma sempre curta, casual e usando algumas gírias educacionais. Você precisa de um site que pareça um jogo para os alunos fazerem os deveres de casa e ganharem 'EduCoins'. Responda no máximo 2-3 frases por vez."
+        },
+        {
+            id: 102,
+            title: "Gestor de Frota Inteligente",
+            clientName: "Carlos (Gerente de Logística)",
+            shortDescription: "Painel administrativo para rastrear caminhões e prever manutenção baseada em IA e quilometragem.",
+            personaPrompt: "Você é o Carlos, um gerente de logística focado em resultados e redução de custos. Você é muito direto, sem enrolação. Responda curto e objetivo. Você quer um sistema que avise no celular quando o pneu do caminhão precisa ser trocado antes de estourar na estrada. Não use parágrafos longos."
+        },
+        {
+            id: 103,
+            title: "App de Meditação Corporativa",
+            clientName: "Silvia (RH TechCorp)",
+            shortDescription: "Aplicativo mobile focado no bem-estar mental dos funcionários, com sessões guiadas de 5 minutos.",
+            personaPrompt: "Você é a Silvia, líder de RH de uma startup. Você é empática, \"zen\" e usa palavras acolhedoras, mas tem pressa. Responda curto e gentil. Você precisa de um app onde os funcionários abram, respirem por 5 minutos com um áudio, e pronto. Responda com frases curtas de 1-2 linhas."
+        }
+    ];
+
     const generateJobs = async () => {
         try {
             setIsLoading(true);
+
+            // Timeout para evitar travamento da API
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+
             const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
             const prompt = `Gere exatamente 3 ideias criativas e corporativas de sistemas ou aplicativos que clientes fictícios poderiam encomendar. 
+      Nesta geração, adicione o requerimento: "Você sempre deve responder de forma curta, informal, com linguagem natural, simulando um chat real (máximo 2 a 3 frases por resposta)." dentro do personaPrompt.
       Retorne APENAS um JSON array válido com objetos no seguinte formato:
       [
         {
@@ -28,12 +58,14 @@ export default function JobBoard() {
           "title": "Nome da Aplicação",
           "clientName": "Nome do Cliente e Profissão",
           "shortDescription": "Um breve resumo do problema de negócio (máximo 2 linhas).",
-          "personaPrompt": "Instruções detalhadas para uma IA de como agir e falar como este cliente, incluindo nível de formalidade e jargão específico da área."
+          "personaPrompt": "Instruções detalhadas para uma IA de como agir e falar como este cliente, obrigatório exigir respostas curtas e casuais."
         }
       ]
       Retorne puramente o texto JSON. Sem crases de markdown.`;
 
-            const result = await model.generateContent(prompt);
+            const result = await model.generateContent(prompt, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
             const textResponse = result.response.text();
 
             // Limpeza pra garantir o JSON
@@ -45,17 +77,10 @@ export default function JobBoard() {
             setJobs(generatedJobs);
 
         } catch (error) {
-            console.error("Erro ao gerar jobs via IA:", error);
-            // Fallback
-            setJobs([
-                {
-                    id: 99,
-                    title: "Fallback System",
-                    clientName: "Admin",
-                    shortDescription: "A IA não conseguiu conectar, job de emergência carregado.",
-                    personaPrompt: "Você é um administrador do sistema e responde apenas 'Sistema offline'."
-                }
-            ]);
+            console.warn("Erro ao gerar jobs criativos (Gemini API). Usando Fallbacks do portfólio:", error);
+            // Fallback amigável
+            localStorage.setItem('arquitetos_jobs', JSON.stringify(FALLBACK_JOBS));
+            setJobs(FALLBACK_JOBS);
         } finally {
             setIsLoading(false);
         }
